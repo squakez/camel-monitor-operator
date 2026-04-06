@@ -46,15 +46,15 @@ import (
 // 					ns,
 // 				),
 // 			)
-// 			// The name of the selector, "camel.apache.org/app: timer-to-log"
-// 			g.Eventually(PodStatusPhase(t, ctx, ns, "camel.apache.org/app=timer-to-log"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
+// 			// The name of the selector, "camel.apache.org/monitor: timer-to-log"
+// 			g.Eventually(PodStatusPhase(t, ctx, ns, "camel.apache.org/monitor=timer-to-log"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 
 // 			g.Eventually(
-// 				CamelAppStatus(t, ctx, ns, "timer-to-log"),
+// 				CamelMonitorStatus(t, ctx, ns, "timer-to-log"),
 // 				TestTimeoutMedium,
 // 			).Should(
 // 				MatchFields(IgnoreExtras, Fields{
-// 					"Phase": Equal(v1alpha1.CamelAppPhaseRunning),
+// 					"Phase": Equal(v1alpha1.CamelMonitorPhaseRunning),
 // 				}),
 // 			)
 
@@ -109,15 +109,15 @@ func TestVerifyGrafanaDashboard(t *testing.T) {
 					ns,
 				),
 			)
-			// The name of the selector, "camel.apache.org/app: timer-to-log"
-			g.Eventually(PodStatusPhase(t, ctx, ns, "camel.apache.org/app=timer-to-log"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
+			// The name of the selector, "camel.apache.org/monitor: timer-to-log"
+			g.Eventually(PodStatusPhase(t, ctx, ns, "camel.apache.org/monitor=timer-to-log"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 
 			g.Eventually(
-				CamelAppStatus(t, ctx, ns, "timer-to-log"),
+				CamelMonitorStatus(t, ctx, ns, "timer-to-log"),
 				TestTimeoutMedium,
 			).Should(
 				MatchFields(IgnoreExtras, Fields{
-					"Phase": Equal(v1alpha1.CamelAppPhaseRunning),
+					"Phase": Equal(v1alpha1.CamelMonitorPhaseRunning),
 				}),
 			)
 
