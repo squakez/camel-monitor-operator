@@ -278,7 +278,7 @@ func TestInspectPods(t *testing.T) {
 	}
 	// Use localhost with a wrong port to simulate failure
 	badPort := -1
-	inspectPod(httpClient, pod, podInfo, "127.0.0.1", badPort, nil)
+	inspectPod(httpClient, pod, podInfo, badPort, nil)
 
 	assert.NotNil(t, podInfo.ObservabilityService)
 	assert.False(t, podInfo.Ready)

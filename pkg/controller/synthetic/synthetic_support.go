@@ -57,12 +57,11 @@ func getPods(httpClient http.Client, ctx context.Context, c client.Client, names
 	for _, pod := range pods.Items {
 		readyCondition := kubernetes.GetPodCondition(pod, corev1.PodReady)
 		isPodReady := readyCondition != nil && readyCondition.Status == corev1.ConditionTrue
-		podIp := pod.Status.PodIP
 		podInfo := v1alpha1.PodInfo{
 			Name:           pod.GetName(),
 			Status:         string(pod.Status.Phase),
 			Ready:          isPodReady,
-			InternalIP:     podIp,
+			InternalIP:     pod.Status.PodIP,
 			JolokiaEnabled: kubernetes.JolokiaEnabled(pod),
 		}
 		if readyCondition != nil {
@@ -70,7 +69,13 @@ func getPods(httpClient http.Client, ctx context.Context, c client.Client, names
 		}
 
 		if isPodReady && inspect {
-			inspectPod(httpClient, &pod, &podInfo, podIp, observabilityPort, cpuLimit)
+			inspectPod(httpClient, &pod, &podInfo, observabilityPort, cpuLimit)
+		} else {
+			// Attempt to read logs to recover metrics printed on shutdown
+			// (available since Camel 4.19)
+			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				inspectLog(ctx, c, &pod, &podInfo, cpuLimit)
+			}
 		}
 
 		podsInfo = append(podsInfo, podInfo)
@@ -80,14 +85,14 @@ func getPods(httpClient http.Client, ctx context.Context, c client.Client, names
 }
 
 // inspectPod scan a ready Pod and scrape health and metrics which it stores on podInfo resource.
-func inspectPod(httpClient http.Client, pod *corev1.Pod, podInfo *v1alpha1.PodInfo, podIp string, observabilityPort int, cpuLimit *string) {
+func inspectPod(httpClient http.Client, pod *corev1.Pod, podInfo *v1alpha1.PodInfo, observabilityPort int, cpuLimit *string) {
 	podInfo.ObservabilityService = &v1alpha1.ObservabilityServiceInfo{}
-	if err := setHealth(podInfo, podIp, observabilityPort); err != nil {
+	if err := setHealth(podInfo, pod.Status.PodIP, observabilityPort); err != nil {
 		reason := fmt.Sprintf("Could not scrape health endpoint: %s", err.Error())
 		log.Infof("Pod %s/%s: %s", pod.GetNamespace(), pod.GetName(), reason)
 		podInfo.Reason = reason
 	}
-	if err := setMetrics(httpClient, podInfo, podIp, observabilityPort); err != nil {
+	if err := setMetrics(httpClient, podInfo, pod.Status.PodIP, observabilityPort); err != nil {
 		reason := fmt.Sprintf("Could not scrape metrics endpoint: %s", err.Error())
 		log.Infof("Pod %s/%s: %s", pod.GetNamespace(), pod.GetName(), reason)
 		if podInfo.Reason != "" {
@@ -98,6 +103,19 @@ func inspectPod(httpClient http.Client, pod *corev1.Pod, podInfo *v1alpha1.PodIn
 	if err := setCPUPressure(podInfo, cpuLimit); err != nil {
 		log.Error(err, "Could not parse cpu usage/max value, skipping")
 	}
+}
+
+// inspectLog scan a log and scrape the metrics printed on shutdown (if any).
+func inspectLog(ctx context.Context, c client.Client, pod *corev1.Pod, podInfo *v1alpha1.PodInfo, cpuLimit *string) {
+	shutdownLog, err := kubernetes.DumpLog(ctx, c, pod, corev1.PodLogOptions{TailLines: ptr.To(int64(64))})
+	if err != nil {
+		log.Error(err, "Could not recover pod log")
+	}
+	fmt.Println("************", shutdownLog)
+	// Get log
+	// if err := setCPUPressure(podInfo, cpuLimit); err != nil {
+	// 	log.Error(err, "Could not parse cpu usage/max value, skipping")
+	// }
 }
 
 func setCPUPressure(podInfo *v1alpha1.PodInfo, cpuLimit *string) error {
@@ -159,49 +177,12 @@ func setMetrics(httpClient http.Client, podInfo *v1alpha1.PodInfo, podIp string,
 		podInfo.ObservabilityService.MetricsEndpoint = platform.DefaultObservabilityMetrics
 		podInfo.ObservabilityService.MetricsPort = port
 
-		if podInfo.Runtime == nil {
-			podInfo.Runtime = &v1alpha1.RuntimeInfo{}
-		}
-		if podInfo.Runtime.Exchange == nil {
-			podInfo.Runtime.Exchange = &v1alpha1.ExchangeInfo{}
-		}
-
 		metrics, err := parseMetrics(resp.Body)
 		if err != nil {
 			return err
 		}
-		if metric, ok := metrics[v1alpha1.Metric_app_info]; ok {
-			populateRuntimeInfo(metric, v1alpha1.Metric_app_info, podInfo)
-		}
 
-		podInfo.Runtime.Exchange.Total = int((ptr.Deref(getCounter(metrics, v1alpha1.Metric_camel_exchanges_total), 0)))
-		podInfo.Runtime.Exchange.Failed = int((ptr.Deref(getCounter(metrics, v1alpha1.Metric_camel_exchanges_failed_total), 0)))
-		podInfo.Runtime.Exchange.Succeeded = int((ptr.Deref(getCounter(metrics, v1alpha1.Metric_camel_exchanges_succeeded_total), 0)))
-		// Note: camel is reporting this as a gauge
-		podInfo.Runtime.Exchange.Pending = int((ptr.Deref(getGauge(metrics, v1alpha1.Metric_camel_exchanges_inflight), 0)))
-
-		exchangeLastTimestamp := getGauge(metrics, v1alpha1.Metric_camel_exchanges_last_timestamp)
-		if exchangeLastTimestamp != nil {
-			timeUnixMilli := time.UnixMilli(int64(math.Round(*exchangeLastTimestamp)))
-			podInfo.Runtime.Exchange.LastTimestamp = &metav1.Time{Time: timeUnixMilli}
-		}
-
-		processFloatVal := getGauge(metrics, v1alpha1.Metric_system_cpu_usage)
-		if processFloatVal != nil {
-			// values is expressed in cores in Prometheus, whilst we want millicores
-			podInfo.ProcessCPUUsed = ptr.To(strconv.FormatFloat(*processFloatVal*1000, 'f', 0, 64))
-		}
-
-		podInfo.JVMMemoryUsed = ptr.To(int64(*getGaugeWithLabel(metrics, v1alpha1.Metric_jvm_memory_used, "area", "heap")))
-		podInfo.JVMMemoryMax = ptr.To(int64(*getGaugeWithLabel(metrics, v1alpha1.Metric_jvm_memory_max, "area", "heap")))
-		if podInfo.JVMMemoryUsed != nil && podInfo.JVMMemoryMax != nil && *podInfo.JVMMemoryMax > 0 {
-			memoryPercentage := float64(*podInfo.JVMMemoryUsed) / float64(*podInfo.JVMMemoryMax) * 100
-			if memoryPercentage >= 90 {
-				podInfo.HasMemoryPressure = true
-			}
-		}
-
-		return nil
+		return populateMetrics(podInfo, metrics)
 	}
 
 	return fmt.Errorf("HTTP status not OK, it was %d", resp.StatusCode)
@@ -215,6 +196,47 @@ func parseMetrics(reader io.Reader) (map[string]*dto.MetricFamily, error) {
 	}
 
 	return mf, nil
+}
+
+func populateMetrics(podInfo *v1alpha1.PodInfo, metrics map[string]*dto.MetricFamily) error {
+	if podInfo.Runtime == nil {
+		podInfo.Runtime = &v1alpha1.RuntimeInfo{}
+	}
+	if podInfo.Runtime.Exchange == nil {
+		podInfo.Runtime.Exchange = &v1alpha1.ExchangeInfo{}
+	}
+	if metric, ok := metrics[v1alpha1.Metric_app_info]; ok {
+		populateRuntimeInfo(metric, v1alpha1.Metric_app_info, podInfo)
+	}
+
+	podInfo.Runtime.Exchange.Total = int((ptr.Deref(getCounter(metrics, v1alpha1.Metric_camel_exchanges_total), 0)))
+	podInfo.Runtime.Exchange.Failed = int((ptr.Deref(getCounter(metrics, v1alpha1.Metric_camel_exchanges_failed_total), 0)))
+	podInfo.Runtime.Exchange.Succeeded = int((ptr.Deref(getCounter(metrics, v1alpha1.Metric_camel_exchanges_succeeded_total), 0)))
+	// Note: camel is reporting this as a gauge
+	podInfo.Runtime.Exchange.Pending = int((ptr.Deref(getGauge(metrics, v1alpha1.Metric_camel_exchanges_inflight), 0)))
+
+	exchangeLastTimestamp := getGauge(metrics, v1alpha1.Metric_camel_exchanges_last_timestamp)
+	if exchangeLastTimestamp != nil {
+		timeUnixMilli := time.UnixMilli(int64(math.Round(*exchangeLastTimestamp)))
+		podInfo.Runtime.Exchange.LastTimestamp = &metav1.Time{Time: timeUnixMilli}
+	}
+
+	processFloatVal := getGauge(metrics, v1alpha1.Metric_system_cpu_usage)
+	if processFloatVal != nil {
+		// values is expressed in cores in Prometheus, whilst we want millicores
+		podInfo.ProcessCPUUsed = ptr.To(strconv.FormatFloat(*processFloatVal*1000, 'f', 0, 64))
+	}
+
+	podInfo.JVMMemoryUsed = ptr.To(int64(*getGaugeWithLabel(metrics, v1alpha1.Metric_jvm_memory_used, "area", "heap")))
+	podInfo.JVMMemoryMax = ptr.To(int64(*getGaugeWithLabel(metrics, v1alpha1.Metric_jvm_memory_max, "area", "heap")))
+	if podInfo.JVMMemoryUsed != nil && podInfo.JVMMemoryMax != nil && *podInfo.JVMMemoryMax > 0 {
+		memoryPercentage := float64(*podInfo.JVMMemoryUsed) / float64(*podInfo.JVMMemoryMax) * 100
+		if memoryPercentage >= 90 {
+			podInfo.HasMemoryPressure = true
+		}
+	}
+
+	return nil
 }
 
 func populateRuntimeInfo(metric *dto.MetricFamily, metricName string, podInfo *v1alpha1.PodInfo) {

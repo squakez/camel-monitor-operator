@@ -67,3 +67,10 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/proxy
+  - pods/log
+  verbs:
+  - get
