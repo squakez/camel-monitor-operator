@@ -27,5 +27,5 @@ Notes to be further developed:
 * Bump the version to the desired version to cut: `make bump VERSION=0.0.1`
 * Prepare the Helm chart: `make release-helm`
 * Push the release branch
-* Create a tag with the version you want to cut as `vx.y.z` (ie, `v0.0.1`) --> will trigger a Github action pushing the operator container image to Quay.io
+* Create a tag with the version you want to cut as `vx.y.z` (ie, `v0.0.1`) --> will trigger a Github action pushing the operator container image to Quay.io (repo https://quay.io/repository/camel-tooling/camel-monitor-operator?tab=tags)
 * Finalize the release
