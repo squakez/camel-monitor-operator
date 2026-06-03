@@ -23,11 +23,11 @@ NOTE: if you don't list any available builder, if you're on Ubuntu, you can inst
 
 Notes to be further developed:
 
-* Create a new `release-a.b.x` (ie, `release-0.0.x`) branch from `main` at the point of release cut.
-* Bump the version to the desired version to cut: `VERSION=0.0.1 make bump bundle`
+* Create a new `release-a.b.x` (ie, `release-0.2.x`) branch from `main` at the point of release cut.
+* Bump the version to the desired version to cut: `VERSION=0.2.1 LAST_RELEASED_VERSION=0.2.0 make bump bundle`
 * Prepare the Helm chart: `make release-helm`
 * Push the release branch
-* Create a tag with the version you want to cut as `vx.y.z` (ie, `v0.0.1`) --> will trigger a Github action pushing the operator container image to Quay.io (repo https://quay.io/repository/camel-tooling/camel-monitor-operator?tab=tags)
+* Create a tag with the version you want to cut as `vx.y.z` (ie, `v0.2.1`) --> will trigger a Github action pushing the operator container image to Quay.io (repo https://quay.io/repository/camel-tooling/camel-monitor-operator?tab=tags)
 * Finalize the release
 
 === Operator Hub
