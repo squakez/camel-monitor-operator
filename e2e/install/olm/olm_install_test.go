@@ -72,10 +72,10 @@ func TestOLMInstallation(t *testing.T) {
 					strings.Split("label deployment camel-app-main camel.apache.org/monitor=camel-sample-monitored -n "+ns, " ")...,
 				),
 			)
-			// The name of the selector, "camel.apache.org/monitor: camel-sample"
-			g.Eventually(CamelMonitor(t, ctx, ns, "camel-sample")).Should(Not(BeNil()))
+			// The name of the selector, "camel.apache.org/monitor: camel-sample-monitored"
+			g.Eventually(CamelMonitor(t, ctx, ns, "camel-sample-monitored")).Should(Not(BeNil()))
 			g.Eventually(
-				CamelMonitorStatus(t, ctx, ns, "camel-sample"),
+				CamelMonitorStatus(t, ctx, ns, "camel-sample-monitored"),
 				TestTimeoutMedium,
 			).Should(
 				MatchFields(IgnoreExtras, Fields{
