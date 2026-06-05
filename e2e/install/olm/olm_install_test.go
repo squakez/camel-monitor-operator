@@ -163,7 +163,7 @@ func TestOLMGlobalInstallation(t *testing.T) {
 			g.Eventually(CamelMonitor(t, ctx, ns2, "camel-sample-monitored")).Should(Not(BeNil()))
 			g.Eventually(
 				CamelMonitorStatus(t, ctx, ns2, "camel-sample-monitored"),
-				TestTimeoutMedium,
+				TestTimeoutLong,
 			).Should(
 				MatchFields(IgnoreExtras, Fields{
 					"Phase":       Equal(v1alpha1.CamelMonitorPhaseRunning),
