@@ -46,7 +46,7 @@ func CamelMonitor(name, namespace string) *CamelMonitorApplyConfiguration {
 	b.WithName(name)
 	b.WithNamespace(namespace)
 	b.WithKind("CamelMonitor")
-	b.WithAPIVersion("camel.apache.org/v1alpha1")
+	b.WithAPIVersion("camel/v1alpha1")
 	return b
 }
 

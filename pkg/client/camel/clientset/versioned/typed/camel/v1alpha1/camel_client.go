@@ -32,7 +32,7 @@ type CamelV1alpha1Interface interface {
 	CamelMonitorsGetter
 }
 
-// CamelV1alpha1Client is used to interact with features provided by the camel.apache.org group.
+// CamelV1alpha1Client is used to interact with features provided by the camel group.
 type CamelV1alpha1Client struct {
 	restClient rest.Interface
 }
